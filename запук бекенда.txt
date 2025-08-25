@@ -1,0 +1,19 @@
+CMD)
+2. Перейдіть у папку бекенду:
+cd C:\Users\elaks\OneDrive\Desktop\Kod\Rahunok1\Rahunok1\Rahunok\backend
+
+3. Активуйте віртуальне середовище:
+call venv\Scripts\activate.bat
+
+
+4. Встановіть залежності (якщо ще не встановлені):
+pip install -r requirements.txt
+
+5. Запустіть сервер FastAPI через uvicorn:
+uvicorn main:app --reload
+
+
+після першого разу можна лиш цих два рядки
+
+cd C:\Users\elaks\OneDrive\Desktop\Kod\Rahunok1\Rahunok1\Rahunok\backend
+uvicorn main:app --reload
