@@ -43,18 +43,31 @@ def create_invoice(invoice: InvoiceCreate, db: Session = Depends(get_db)):
         db.add(db_item)
     db.commit()
     db.refresh(db_invoice)
+    # Створення видаткової накладної одразу після створення рахунку
+    db_waybill = Waybill(
+        invoice_id=db_invoice.id,
+        number=db_invoice.number,
+        date=db_invoice.date,
+        client_id=db_invoice.client_id,
+        total=db_invoice.total,
+        status='created'
+    )
+    db.add(db_waybill)
+    db.commit()
     # Створення текстового файлу з реквізитами у підпапці
     client = db.query(Client).filter(Client.id == db_invoice.client_id).first()
     txt_dir = os.path.join(os.getcwd(), "invoices_txt")
     os.makedirs(txt_dir, exist_ok=True)
     filename = f"invoice_{db_invoice.number}.txt"
     filepath = os.path.join(txt_dir, filename)
+    client_name = client.name if client else ''
+    client_code = f" ({client.code})" if client and client.code else ''
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"Рахунок №{db_invoice.number} від {db_invoice.date}\n")
         f.write(f"Постачальник: ФОП Чернієнко Олександр Іванович, ІПН 3194110954\n")
         f.write(f"Р/р UA563220010000026006340026851, АТ УНІВЕРСАЛ БАНК, МФО 322001\n")
         f.write(f"Адреса: 20500 Черкаська обл., смт. Катеринопіль, вул. Ватутіна, 25\n")
-        f.write(f"Покупець: {client.name if client else ''}{(' (' + client.code + ')') if client and client.code else ''}\n")
+        f.write(f"Покупець: {client_name}{client_code}\n")
         f.write(f"\nТовари:\n")
         for item in invoice.items:
             f.write(f"- {item.name}, {item.quantity} {item.unit}, {item.price} грн, на суму {item.total} грн\n")
