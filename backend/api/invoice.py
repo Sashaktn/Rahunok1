@@ -8,6 +8,12 @@ from utils.database import SessionLocal
 from typing import List
 from datetime import date
 import os
+from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
+import glob
+import zipfile
+import io
+import requests
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -152,3 +158,54 @@ def download_invoice_txt(invoice_id: int, db: Session = Depends(get_db)):
     with open(filepath, "rb") as f:
         content = f.read()
     return FastAPIResponse(content, media_type="text/plain", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+@router.get("/download/all")
+def download_all_invoices():
+    txt_dir = os.path.join(os.getcwd(), "invoices_txt")
+    files = sorted(glob.glob(os.path.join(txt_dir, "*.txt")), key=os.path.getmtime, reverse=True)
+    if not files:
+        raise HTTPException(status_code=404, detail="No invoice files found")
+    def file_iterator():
+        for file_path in files:
+            filename = os.path.basename(file_path)
+            yield f"--file-boundary\r\nContent-Disposition: attachment; filename={filename}\r\n\r\n".encode()
+            with open(file_path, "rb") as f:
+                yield f.read()
+            yield b"\r\n"
+        yield b"--file-boundary--\r\n"
+    headers = {
+        "Content-Type": "multipart/mixed; boundary=file-boundary",
+        "Content-Disposition": "attachment; filename=all_invoices.txt"
+    }
+    return StreamingResponse(file_iterator(), headers=headers)
+
+@router.get("/{invoice_id}/archive")
+def download_invoice_archive(invoice_id: int, db: Session = Depends(get_db)):
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    # TXT
+    txt_dir = os.path.join(os.getcwd(), "invoices_txt")
+    txt_filename = f"invoice_{invoice.number}.txt"
+    txt_path = os.path.join(txt_dir, txt_filename)
+    # PDF
+    pdf_url = f"http://localhost:8000/invoices/{invoice_id}/pdf"
+    # Waybill PDF
+    waybill_url = f"http://localhost:8000/waybills/by-invoice/{invoice_id}/pdf"
+    # Створюємо zip у пам'яті
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zip_file:
+        # TXT
+        if os.path.exists(txt_path):
+            with open(txt_path, "rb") as f:
+                zip_file.writestr(txt_filename, f.read())
+        # PDF
+        pdf_resp = requests.get(pdf_url)
+        if pdf_resp.ok:
+            zip_file.writestr(f"invoice_{invoice.number}.pdf", pdf_resp.content)
+        # Waybill PDF
+        waybill_resp = requests.get(waybill_url)
+        if waybill_resp.ok:
+            zip_file.writestr(f"waybill_{invoice.number}.pdf", waybill_resp.content)
+    zip_buffer.seek(0)
+    return StreamingResponse(zip_buffer, media_type="application/zip", headers={"Content-Disposition": f"attachment; filename=invoice_{invoice.number}_docs.zip"})

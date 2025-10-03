@@ -9,7 +9,28 @@ function App() {
   const fetchInvoices = () => {
     fetch('http://localhost:8000/invoices')
       .then(res => res.json())
-      .then(data => setInvoices(data));
+      .then(data => {
+        // Сортуємо: спочатку за датою (спадання), потім за номером рахунку (спадання)
+        data.sort((a, b) => {
+          const dateA = new Date(a.date);
+          const dateB = new Date(b.date);
+          if (dateA > dateB) return -1;
+          if (dateA < dateB) return 1;
+          // Якщо дати однакові — сортуємо за номером рахунку (як число, спадання)
+          const numA = parseInt(a.number, 10);
+          const numB = parseInt(b.number, 10);
+          if (!isNaN(numA) && !isNaN(numB)) {
+            if (numA > numB) return -1;
+            if (numA < numB) return 1;
+          } else {
+            // Якщо номер не число — сортуємо як рядок
+            if (a.number > b.number) return -1;
+            if (a.number < b.number) return 1;
+          }
+          return 0;
+        });
+        setInvoices(data);
+      });
   };
 
   useEffect(() => {
@@ -26,6 +47,43 @@ function App() {
 
   const handleDownloadTxt = (id) => {
     window.open(`http://localhost:8000/invoices/${id}/txt`, '_blank');
+  };
+
+  // Завантаження всіх txt-файлів
+  const handleDownloadAllTxt = async () => {
+    const response = await fetch('http://localhost:8000/invoices/download/all');
+    if (!response.ok) {
+      alert('Не вдалося завантажити файли');
+      return;
+    }
+    const blob = await response.blob();
+    // Створюємо посилання для завантаження
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'all_invoices.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  // Завантажити всі документи для рахунку (zip)
+  const handleDownloadAllDocs = async (inv) => {
+    const url = `http://localhost:8000/invoices/${inv.id}/archive`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      alert('Не вдалося завантажити архів');
+      return;
+    }
+    const blob = await response.blob();
+    const a = document.createElement('a');
+    a.href = window.URL.createObjectURL(blob);
+    a.download = `invoice_${inv.number}_docs.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(a.href);
   };
 
   const handleEdit = (invoice) => {
@@ -71,11 +129,17 @@ function App() {
                 <td style={{ border: '1px solid #ccc', padding: 8 }}>{inv.total}</td>
                 <td style={{ border: '1px solid #ccc', padding: 8 }}>{inv.status}</td>
                 <td style={{ border: '1px solid #ccc', padding: 8 }}>
-                  <button onClick={() => handleDownloadPDF(inv.id)}>Завантажити PDF</button>
-                  <button style={{ marginLeft: 8 }} onClick={() => handleDownloadWaybill(inv.id)}>Видаткова накладна</button>
-                  <button style={{ marginLeft: 8 }} onClick={() => handleDownloadTxt(inv.id)}>Текстовий файл</button>
-                  <button style={{ marginLeft: 8 }} onClick={() => handleEdit(inv)}>Редагувати</button>
-                  <button style={{ marginLeft: 8 }} onClick={() => handleDelete(inv.id)}>Видалити</button>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button title="Завантажити всі документи" style={{ width: 36, height: 36, borderRadius: 6, background: '#1976d2', color: 'white', border: 'none', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => handleDownloadAllDocs(inv)}>
+                      <span role="img" aria-label="download">⬇️</span>
+                    </button>
+                    <button title="Редагувати" style={{ width: 36, height: 36, borderRadius: 6, background: '#ffc107', color: '#333', border: 'none', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => handleEdit(inv)}>
+                      <span role="img" aria-label="edit">✏️</span>
+                    </button>
+                    <button title="Видалити" style={{ width: 36, height: 36, borderRadius: 6, background: '#f44336', color: 'white', border: 'none', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => handleDelete(inv.id)}>
+                      <span role="img" aria-label="delete">🗑️</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))
